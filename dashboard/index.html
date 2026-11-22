@@ -3,38 +3,241 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>ESP32 Temperature Monitoring</title>
+  <title>ESP32 + LM35 Telemetry Dashboard | iot.local</title>
   <style>
+    :root {
+      --bg: #080d18;
+      --panel: #111827;
+      --card: #182234;
+      --border: #2c3b52;
+      --text: #f8fafc;
+      --muted: #94a3b8;
+      --cyan: #38bdf8;
+      --green: #34d399;
+      --amber: #fbbf24;
+      --red: #f87171;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
-      font-family: Arial, sans-serif;
-      margin: 2rem;
-      background: #111827;
-      color: #f9fafb;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      padding: 1.5rem;
+      line-height: 1.5;
+    }
+    .wrap { max-width: 980px; margin: 0 auto; }
+    .top {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      align-items: center;
+      gap: 1rem;
+      margin-bottom: 1.25rem;
+    }
+    .top h1 { font-size: 1.4rem; }
+    .top p { color: var(--muted); font-size: 0.88rem; }
+    .status-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.35rem 0.85rem;
+      border-radius: 999px;
+      font-size: 0.82rem;
+      font-weight: 700;
+      border: 1px solid rgba(52, 211, 153, 0.35);
+      background: rgba(52, 211, 153, 0.12);
+      color: var(--green);
+    }
+    .status-pill.warn {
+      border-color: rgba(251, 191, 36, 0.45);
+      background: rgba(251, 191, 36, 0.14);
+      color: var(--amber);
+    }
+    .status-pill.alert {
+      border-color: rgba(248, 113, 113, 0.5);
+      background: rgba(248, 113, 113, 0.15);
+      color: var(--red);
+    }
+    .metrics {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(195px, 1fr));
+      gap: 0.9rem;
+      margin-bottom: 1.1rem;
     }
     .card {
-      max-width: 520px;
-      padding: 1.5rem;
-      border-radius: 10px;
-      background: #1f2937;
-      border: 1px solid #374151;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1rem 1.15rem;
     }
-    .temp {
-      font-size: 2.25rem;
-      font-weight: bold;
-      margin: 0.75rem 0;
+    .label { font-size: 0.74rem; text-transform: uppercase; color: var(--muted); letter-spacing: 0.04em; }
+    .value { font-size: 1.45rem; font-weight: 700; margin-top: 0.25rem; color: var(--cyan); }
+    .sub { font-size: 0.78rem; color: var(--muted); margin-top: 0.2rem; }
+    .chart-box {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1rem 1.15rem;
+      margin-bottom: 1.1rem;
     }
-    .muted {
-      color: #9ca3af;
-      font-size: 0.9rem;
+    svg { width: 100%; height: 220px; display: block; background: var(--panel); border-radius: 8px; border: 1px solid var(--border); }
+    .controls {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1rem 1.15rem;
     }
+    .ctrl-group { display: flex; align-items: center; gap: 0.65rem; flex-wrap: wrap; }
+    button {
+      background: #1d4ed8;
+      color: #fff;
+      border: none;
+      padding: 0.45rem 0.9rem;
+      border-radius: 8px;
+      font-weight: 600;
+      font-size: 0.85rem;
+      cursor: pointer;
+    }
+    button.secondary { background: #26354d; }
+    button:hover { opacity: 0.92; }
+    input[type="range"] { accent-color: var(--cyan); }
   </style>
 </head>
 <body>
-  <div class="card">
-    <h1>ESP32 Temperature Monitoring</h1>
-    <p class="muted">Baseline antarmuka pemantauan suhu (LM35 + Signal Conditioning)</p>
-    <div class="temp" id="temp-value">--.- °C</div>
-    <p class="muted" id="status-text">Menunggu sumber data telemetri...</p>
+  <div class="wrap">
+    <div class="top">
+      <div>
+        <h1>ESP32 + LM35 Telemetry Monitor</h1>
+        <p>Simulasi sinyal terfilter (Op-Amp + Low-Pass Filter) di balik reverse proxy <code>https://iot.local</code></p>
+      </div>
+      <div id="statusBadge" class="status-pill">● NORMAL</div>
+    </div>
+
+    <div class="metrics">
+      <div class="card">
+        <div class="label">Suhu Terukur</div>
+        <div id="tempVal" class="value">--.- °C</div>
+        <div class="sub">LM35 (10 mV / °C)</div>
+      </div>
+      <div class="card">
+        <div class="label">Tegangan LM35 Raw</div>
+        <div id="rawVoltVal" class="value">0.000 V</div>
+        <div class="sub">Sebelum pengondisi sinyal</div>
+      </div>
+      <div class="card">
+        <div class="label">Output Op-Amp + LPF</div>
+        <div id="filtVoltVal" class="value">0.000 V</div>
+        <div class="sub">Gain 2.0x • ADC ESP32</div>
+      </div>
+      <div class="card">
+        <div class="label">Ambang Alert</div>
+        <div id="threshVal" class="value">45.0 °C</div>
+        <div class="sub">Batas peringatan panas</div>
+      </div>
+    </div>
+
+    <div class="chart-box">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.65rem;">
+        <strong style="font-size:0.95rem;">Riwayat Suhu Real-Time (30 Sampel Terakhir)</strong>
+        <span style="font-size:0.78rem;color:var(--muted);">Interval: 1.5 detik</span>
+      </div>
+      <svg id="chart" viewBox="0 0 800 220" preserveAspectRatio="none">
+        <line x1="0" y1="55" x2="800" y2="55" stroke="#1e293b" stroke-width="1" />
+        <line x1="0" y1="110" x2="800" y2="110" stroke="#1e293b" stroke-width="1" />
+        <line x1="0" y1="165" x2="800" y2="165" stroke="#1e293b" stroke-width="1" />
+        <polyline id="tempLine" fill="none" stroke="#38bdf8" stroke-width="3" points="" />
+      </svg>
+    </div>
+
+    <div class="controls">
+      <div class="ctrl-group">
+        <label for="threshSlider" style="font-size:0.88rem;color:var(--muted);">Atur Batas Alert:</label>
+        <input id="threshSlider" type="range" min="30" max="75" step="0.5" value="45" />
+      </div>
+      <div class="ctrl-group">
+        <button id="spikeBtn" type="button">Simulasi Lonjakan Suhu</button>
+        <button id="pauseBtn" class="secondary" type="button">Jeda</button>
+      </div>
+    </div>
   </div>
+
+  <script>
+    const maxPoints = 30;
+    let samples = Array.from({ length: maxPoints }, () => 29.5 + (Math.random() - 0.5) * 1.2);
+    let paused = false;
+    let spikeBoost = 0;
+
+    const tempVal = document.getElementById('tempVal');
+    const rawVoltVal = document.getElementById('rawVoltVal');
+    const filtVoltVal = document.getElementById('filtVoltVal');
+    const threshVal = document.getElementById('threshVal');
+    const threshSlider = document.getElementById('threshSlider');
+    const statusBadge = document.getElementById('statusBadge');
+    const tempLine = document.getElementById('tempLine');
+
+    function render() {
+      const threshold = parseFloat(threshSlider.value);
+      threshVal.textContent = threshold.toFixed(1) + ' °C';
+
+      const latest = samples[samples.length - 1];
+      const rawV = latest * 0.01;
+      const filtV = rawV * 2.0;
+
+      tempVal.textContent = latest.toFixed(1) + ' °C';
+      rawVoltVal.textContent = rawV.toFixed(3) + ' V';
+      filtVoltVal.textContent = filtV.toFixed(3) + ' V';
+
+      statusBadge.className = 'status-pill';
+      if (latest >= threshold) {
+        statusBadge.classList.add('alert');
+        statusBadge.textContent = '● ALERT SUHU TINGGI';
+      } else if (latest >= threshold - 4) {
+        statusBadge.classList.add('warn');
+        statusBadge.textContent = '● WARNING MENDEKATI BATAS';
+      } else {
+        statusBadge.textContent = '● NORMAL';
+      }
+
+      const minT = 20;
+      const maxT = 80;
+      const pts = samples.map((t, idx) => {
+        const x = (idx / (maxPoints - 1)) * 780 + 10;
+        const clamped = Math.max(minT, Math.min(maxT, t));
+        const y = 200 - ((clamped - minT) / (maxT - minT)) * 180;
+        return `${x.toFixed(1)},${y.toFixed(1)}`;
+      }).join(' ');
+      tempLine.setAttribute('points', pts);
+    }
+
+    function tick() {
+      if (paused) return;
+      const prev = samples[samples.length - 1];
+      spikeBoost = Math.max(0, spikeBoost * 0.85 - 0.3);
+      const drift = (29.8 - prev) * 0.12 + (Math.random() - 0.5) * 1.1 + spikeBoost;
+      samples.push(Math.max(22, Math.min(75, prev + drift)));
+      if (samples.length > maxPoints) samples.shift();
+      render();
+    }
+
+    document.getElementById('spikeBtn').addEventListener('click', () => {
+      spikeBoost = 8.5;
+      tick();
+    });
+
+    document.getElementById('pauseBtn').addEventListener('click', (e) => {
+      paused = !paused;
+      e.target.textContent = paused ? 'Lanjutkan' : 'Jeda';
+    });
+
+    threshSlider.addEventListener('input', render);
+
+    render();
+    setInterval(tick, 1500);
+  </script>
 </body>
 </html>
