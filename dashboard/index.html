@@ -3,10 +3,38 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>ESP32 Temperature Monitoring Dashboard</title>
+  <title>ESP32 Temperature Monitoring</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 2rem;
+      background: #111827;
+      color: #f9fafb;
+    }
+    .card {
+      max-width: 520px;
+      padding: 1.5rem;
+      border-radius: 10px;
+      background: #1f2937;
+      border: 1px solid #374151;
+    }
+    .temp {
+      font-size: 2.25rem;
+      font-weight: bold;
+      margin: 0.75rem 0;
+    }
+    .muted {
+      color: #9ca3af;
+      font-size: 0.9rem;
+    }
+  </style>
 </head>
 <body>
-  <h1>ESP32 Temperature Monitoring</h1>
-  <p>Placeholder antarmuka pemantauan data suhu real-time.</p>
+  <div class="card">
+    <h1>ESP32 Temperature Monitoring</h1>
+    <p class="muted">Baseline antarmuka pemantauan suhu (LM35 + Signal Conditioning)</p>
+    <div class="temp" id="temp-value">--.- °C</div>
+    <p class="muted" id="status-text">Menunggu sumber data telemetri...</p>
+  </div>
 </body>
 </html>
