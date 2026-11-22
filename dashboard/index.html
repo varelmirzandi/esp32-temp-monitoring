@@ -214,15 +214,26 @@
       tempLine.setAttribute('points', pts);
     }
 
-    function tick() {
-      if (paused) return;
-      const prev = samples[samples.length - 1];
-      spikeBoost = Math.max(0, spikeBoost * 0.85 - 0.3);
-      const drift = (29.8 - prev) * 0.12 + (Math.random() - 0.5) * 1.1 + spikeBoost;
-      samples.push(Math.max(22, Math.min(75, prev + drift)));
-      if (samples.length > maxPoints) samples.shift();
-      render();
-    }
+    async function tick() {
+          if (paused) return;
+          try {
+            const res = await fetch('/api/telemetry', { cache: 'no-store' });
+            if (!res.ok) throw new Error('HTTP ' + res.status);
+            const data = await res.json();
+            const val = parseFloat(data.temperature_c) + spikeBoost;
+            spikeBoost = Math.max(0, spikeBoost * 0.85 - 0.3);
+            samples.push(Math.max(22, Math.min(75, val)));
+            if (samples.length > maxPoints) samples.shift();
+            render();
+          } catch (_) {
+            const prev = samples[samples.length - 1];
+            spikeBoost = Math.max(0, spikeBoost * 0.85 - 0.3);
+            const drift = (29.8 - prev) * 0.12 + (Math.random() - 0.5) * 1.1 + spikeBoost;
+            samples.push(Math.max(22, Math.min(75, prev + drift)));
+            if (samples.length > maxPoints) samples.shift();
+            render();
+          }
+        }
 
     document.getElementById('spikeBtn').addEventListener('click', () => {
       spikeBoost = 8.5;
